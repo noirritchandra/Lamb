@@ -129,7 +129,7 @@ b_dir=.1
 ```{r Fit Lamb}
 result.lamb <- DL_mixture(a_dir, b_dir, diag_psi_iw=diag_psi_iw, niw_kap=niw_kap, niw_nu=nu, 
                           as=as, bs=bs, a=a,
-                          nrun=5e3, burn=1e3, thin=1, 
+                          nrun=5e3, burn=1e3, thin=5, 
                           nstep = 5,prob=0.5, #With probability `prob` either Split-Merge sampler or Gibbs sampler in performed witn `nstep` Gibbs scans
                           lambda, eta, y,
                           del = cluster.start, 
