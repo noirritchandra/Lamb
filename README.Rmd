@@ -129,7 +129,7 @@ b_dir=.1
 ```{r Fit Lamb}
 result.lamb <- DL_mixture(a_dir, b_dir, diag_psi_iw=diag_psi_iw, niw_kap=niw_kap, niw_nu=nu, 
                           as=as, bs=bs, a=a,
-                          nrun=5e1, burn=1e1, thin=1, 
+                          nrun=5e3, burn=1e3, thin=1, 
                           nstep = 5,prob=0.5, #With probability `prob` either Split-Merge sampler or Gibbs sampler in performed witn `nstep` Gibbs scans
                           lambda, eta, y,
                           del = cluster.start, 
@@ -140,7 +140,7 @@ result.lamb <- DL_mixture(a_dir, b_dir, diag_psi_iw=diag_psi_iw, niw_kap=niw_kap
 ### Post-processing the MCMC Samples
 
 ```{r Post-processing}
-burn=2 #burn/thin
+burn=2e2 #burn/thin
 post.samples=result.lamb[-(1:burn),]+1
 sim.mat.lamb <- mcclust::comp.psm(post.samples) # Compute posterior similarity matrix
 clust.lamb <-   minbinder(sim.mat.lamb)$cl # Minimizing Binder loss across MCMC estimates
