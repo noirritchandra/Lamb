@@ -1,7 +1,7 @@
 ---
 title: "LAtent Mixture of Bayesian Cluetring (Lamb) - User Manual"
 author: "Noirrit Kiran Chandra"
-date: "8/18/2021"
+date: "8/19/2021"
 output:
    github_document:
     pandoc_args: --webtex
@@ -9,11 +9,11 @@ output:
 
 ## \*\*For ***`Microsoft Windows`***Users
 
-There might be some issues with `Windows` users while compiling the `C++` file. Please refer to [this stackoverflow link](https://stackoverflow.com/questions/55976547/linking-gsl-libraries-to-rcppgsl-in-windows-10).
+`RcppGSL` is required to use the codes. There might be some issues with `MS Windows` users in setting up this package. Please refer to [this stackoverflow link](https://stackoverflow.com/questions/55976547/linking-gsl-libraries-to-rcppgsl-in-windows-10) for solutions.
 
 ## Compiling the Source `C++` File and Loading Requisite Libraries
 
-```{r Compile the sorce C++ file, message=TRUE, warning=TRUE, include=FALSE}
+```{r Compile the source C++ file, echo=TRUE}
 library("Rcpp")
 library("pracma")
 library("tidyverse")
@@ -22,7 +22,7 @@ library("uwot")
 library("irlba")
 library("mclust")
 library("mcclust")
-sourceCpp("DL_linear_split_merge_package.cpp")
+sourceCpp("DL_linear_split_merge_package.cpp") ##This is the souce C++ file
 source("simulate_data_fxns.R") ##load a supplementary R file with supplementary functions
 ```
 
@@ -30,19 +30,35 @@ source("simulate_data_fxns.R") ##load a supplementary R file with supplementary 
 
 #### Simulate Data
 
+Set the
+
+1.  dimension (`p`)
+
+2.  sample size (`n`)
+
+3.  dimension of the unobserved latent variables `eta` (`d`)
+
+4.  number of clusters (`k`) which is unobserved.
+
 ```{r Simulation}
 set.seed(1)
 p= 2500 # Observed dimension
 n=2000 # Sample size
 d=20 # Latent dimension
 k= 15 # Number of true clusters
+```
 
-#cluster memberships probabilities 
-# 2/3 of the clusters have same probs, the remaining 1/3 together have the same prob of a single big bluster
-pis <- c(rep(1/(round(k*2/3)+1), (round(k*2/3))), 
-rep((1/(round(k*2/3)+1))/(k - (round(k*2/3))), k - (round(k*2/3))))
+Set the cluster memberships probabilities such that 2/3 of the clusters have same probabilities, the remaining 1/3 together have the same prob of a single big bluster.
+
+```{r Set cluster probabilities}
+pis <- c(rep(1/(round(k *2/3)+1), (round(k *2/3))), 
+         rep((1/(round(k *2/3)+1))/(k - (round(k *2/3))), k  - (round(k*2/3))))
 pis <- pis/sum(pis) ##cluster weights
+```
 
+Generate the observed `p`-dimensional data `y`
+
+```{r Generate data}
 lambda = simulate_lambda(d,p,1) # Generate the loading matrix lambda
 sc=quantile(diag(tcrossprod(lambda) ) ,.75); lambda=lambda/sqrt(sc) # Scaling lambda 
 s = sample.int(n=k,size=n, prob=pis, replace = TRUE) ##Cluster membership indicators
@@ -53,7 +69,7 @@ for(i in 1:k){
   inds = which(s==i)
   vars = sqrt(rchisq(d,1))
   m = pracma::randortho(d) %*% diag(vars)
-  eta[inds,]= eta[inds,] %*% t(m)+shifts[i] # The i-th cluster is centered around rep(shifts[i],d) in the latend eta space
+  eta[inds,]= eta[inds,] %*% t(m)+shifts[i] # The i-th cluster is centered around rep(shifts[i],d) in the latent eta space
 }
 y <- tcrossprod(eta,lambda) + matrix(rnorm(p*n, sd=sqrt(.5)), nrow=n, ncol=p) # Observed data
 ```
@@ -69,11 +85,13 @@ p.true
 
 ------------------------------------------------------------------------
 
-> ***For any other dataset replace the simlated `y` with that and follow the proceeding steps*****.**
+> ***For any other dataset replace the simulated `y` with that and follow the proceeding steps*****.**
 
 ## Pipeline of Fitting the Lamb Model
 
 #### Pre-processing Data
+
+We center the data with respect to the *median* and scale ALL variables with the *median standard deviations* of the observed variables.
 
 ```{r Pre-processing}
 y_original=y
@@ -85,11 +103,23 @@ y=(y_original-centering.var)/scaling.var
 
 #### Empirical Estimation the Latent Dimension `d` and Initializing `eta` & `lambda`
 
-```{r Estimation of `d`}
+Perform a sparse PCA on the pre-processed data.
+
+```{r Sparse PCA}
 pca.results=irlba::irlba(y, nv=40)
+```
+
+`d` is set to be the minimum number of eigenbalues explaining at least 95% of the variability in the data.
+
+```{r Estimation of d}
 cum_eigs= cumsum(pca.results$d)/sum(pca.results$d)
-d=min(which(cum_eigs>.95)) # Smallest $d$ explaining at least 95% of the variability in the data
+d=min(which(cum_eigs>.95)) 
 d=ifelse(d<=15,15,d) # Set d= at least 15
+```
+
+Left and right singular values of `y` are used to initialize `eta` and `lambda` respectively for the MCMC.
+
+```{r Singular value initialization}
 eta= pca.results$u %*% diag(pca.results$d)
 eta=eta[,1:d] #Left singular values of y are used as to initialize eta
 lambda=pca.results$v[,1:d] #Right singular values of y are used to initialize lambda
@@ -130,16 +160,18 @@ b_dir=.1
 result.lamb <- DL_mixture(a_dir, b_dir, diag_psi_iw=diag_psi_iw, niw_kap=niw_kap, niw_nu=nu, 
                           as=as, bs=bs, a=a,
                           nrun=5e3, burn=1e3, thin=5, 
-                          nstep = 5,prob=0.5, #With probability `prob` either Split-Merge sampler or Gibbs sampler in performed witn `nstep` Gibbs scans
+                          nstep = 5,prob=0.5, #With probability `prob` either the Split-Merge sampler with `nstep` Gibbs scans or Gibbs sampler in performed 
                           lambda, eta, y,
                           del = cluster.start, 
                           dofactor=1 #If dofactor set to 0, clustering will be done on the initial input eta values only; eta will not be updated in MCMC
                           )
 ```
 
-### Post-processing the MCMC Samples
+### Posterior Summary of the MCMC Samples
 
-```{r Post-processing}
+We compute summaries of the MCMC samples of cluster allocation variables following *Wade and Ghahramani (2018, Bayesian Analysis)*.
+
+```{r Posterior Summary}
 burn=2e2 #burn/thin
 post.samples=result.lamb[-(1:burn),]+1
 sim.mat.lamb <- mcclust::comp.psm(post.samples) # Compute posterior similarity matrix
@@ -165,3 +197,9 @@ p.lamb
 ```{r Comparison with True UMAP,  fig.height=4.5, fig.width=9, dpi=300}
 ggpubr:: ggarrange(p.true,p.lamb,nrow=1,ncol=2, labels = c("True", "Lamb"))
 ```
+
+------------------------------------------------------------------------
+
+## Citation
+
+If you use the Lamb method, kindly cite *Chandra, et al. (2021+). Escaping the curse of dimensionality in Bayesian model based clustering,* <https://arxiv.org/abs/2006.02700>
